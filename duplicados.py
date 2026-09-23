@@ -74,6 +74,7 @@ class Resultado:
     grupos: list[list[InfoImagen]] = field(default_factory=list)  # [0] = la que se conserva
     errores: list[InfoImagen] = field(default_factory=list)  # imágenes que no se pudieron leer
     ignorados: list[Path] = field(default_factory=list)      # archivos que no son imágenes (videos, documentos...)
+    otros_fallidos: list[tuple[Path, str]] = field(default_factory=list)  # de ignorados, los que no se pudieron copiar
 
 
 def buscar_archivos(origen: Path, excluir: Iterable[Path] = ()) -> tuple[list[Path], list[Path]]:
@@ -299,7 +300,7 @@ def copiar_resultado(resultado: Resultado, destino: Path, progreso: Progreso | N
     dir_orig.mkdir(parents=True, exist_ok=True)
     dir_dup.mkdir(parents=True, exist_ok=True)
 
-    total = len(resultado.unicas) + sum(len(g) for g in resultado.grupos)
+    total = len(resultado.unicas) + sum(len(g) for g in resultado.grupos) + len(resultado.ignorados)
     hechos = 0
     filas = []
 
@@ -332,14 +333,22 @@ def copiar_resultado(resultado: Resultado, destino: Path, progreso: Progreso | N
             filas.append([n, tipo, info.ruta, final_c, f"{info.ancho}x{info.alto}", info.tamano])
             avanzar()
 
+    if resultado.ignorados:
+        dir_otros = destino / "Otros"
+        dir_otros.mkdir(exist_ok=True)
+    for ruta in resultado.ignorados:
+        # un video o documento bloqueado no debe detener la copia del resto
+        try:
+            final = _destino_libre(dir_otros, ruta.name)
+            shutil.copy2(ruta, final)
+            filas.append(["", "no es imagen", ruta, final, "", final.stat().st_size])
+        except OSError as e:
+            resultado.otros_fallidos.append((ruta, f"{type(e).__name__}: {e}"))
+            filas.append(["", "no es imagen (no se pudo copiar)", ruta, "", f"{type(e).__name__}: {e}", ""])
+        avanzar()
+
     for info in resultado.errores:
         filas.append(["", "error de lectura (no copiada)", info.ruta, "", info.error, info.tamano])
-    for ruta in resultado.ignorados:
-        try:
-            tamano = ruta.stat().st_size
-        except OSError:
-            tamano = ""
-        filas.append(["", "no es imagen (no copiado)", ruta, "", "", tamano])
 
     reporte = destino / "reporte_duplicados.csv"
     with open(reporte, "w", newline="", encoding="utf-8-sig") as f:

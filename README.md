@@ -55,12 +55,13 @@ Destino/
 ├── Duplicadas/
 │   ├── grupo_001_foto/    copias extra de la imagen "foto" de Original
 │   └── grupo_002_.../
+├── Otros/                 videos, documentos y demás archivos que no son imágenes
 └── reporte_duplicados.csv detalle de qué pasó con cada archivo
 ```
 
 De cada grupo de duplicadas se conserva en `Original` la de **mayor resolución** (y, en empate, la de mayor peso).
 
-Los archivos que no son imágenes (videos, documentos, etc.) y las imágenes dañadas o ilegibles **no se copian**; al terminar, el resumen de la ventana y el reporte CSV listan sus nombres y la cantidad de cada tipo.
+Los archivos que no son imágenes (videos, documentos, etc.) se copian a `Otros` (se crea solo si hay alguno). Las imágenes dañadas o ilegibles **no se copian**. Al terminar, el resumen de la ventana y el reporte CSV listan los nombres y la cantidad de cada tipo.
 
 ## Cómo detecta duplicadas
 

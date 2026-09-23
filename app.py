@@ -124,7 +124,7 @@ class App(tk.Tk):
         if origen.resolve() == destino.resolve():
             messagebox.showerror("Error", "La carpeta de destino no puede ser la misma que la de origen.")
             return
-        existentes = [d for d in ("Original", "Duplicadas") if (destino / d).exists() and any((destino / d).iterdir())]
+        existentes = [d for d in ("Original", "Duplicadas", "Otros") if (destino / d).exists() and any((destino / d).iterdir())]
         if existentes and not messagebox.askyesno(
                 "Carpetas existentes",
                 f"En el destino ya existen con contenido: {', '.join(existentes)}.\n"
@@ -144,11 +144,8 @@ class App(tk.Tk):
         try:
             self.cola.put(("progreso", "Buscando imágenes", 0, 0))
             rutas, otros = duplicados.buscar_archivos(origen, excluir=[destino])
-            if not rutas:
-                texto = "No se encontraron imágenes en la carpeta de origen."
-                if otros:
-                    texto += "\n\n" + _lista("Archivos que no son imágenes", otros, origen)
-                self.cola.put(("fin", texto, None))
+            if not rutas and not otros:
+                self.cola.put(("fin", "La carpeta de origen está vacía.", None))
                 return
 
             infos = []
@@ -167,17 +164,24 @@ class App(tk.Tk):
                 f"Sin duplicados: {len(resultado.unicas)}\n"
                 f"Grupos de duplicados: {len(resultado.grupos)}\n"
                 f"Copias duplicadas: {n_dup}\n"
-                f"Imágenes que no se pudieron leer: {len(resultado.errores)}\n"
-                f"Archivos que no son imágenes (no copiados): {len(otros)}\n\n"
+                f"Imágenes que no se pudieron leer (no copiadas): {len(resultado.errores)}\n"
+                f"Archivos que no son imágenes: {len(otros)}\n\n"
                 f"Original: {len(resultado.unicas) + len(resultado.grupos)} imágenes → {destino / 'Original'}\n"
                 f"Duplicadas: {n_dup} imágenes → {destino / 'Duplicadas'}\n"
-                f"Reporte: {reporte}"
             )
+            if otros:
+                texto += f"Otros: {len(otros) - len(resultado.otros_fallidos)} archivos → {destino / 'Otros'}\n"
+            texto += f"Reporte: {reporte}"
             if resultado.errores:
                 texto += "\n\n" + _lista("Imágenes que no se pudieron leer",
                                          [(i.ruta, _motivo(i.error)) for i in resultado.errores], origen)
-            if otros:
-                texto += "\n\n" + _lista("Archivos que no son imágenes", otros, origen)
+            fallidos = {r for r, _ in resultado.otros_fallidos}
+            copiados = [r for r in otros if r not in fallidos]
+            if copiados:
+                texto += "\n\n" + _lista("Archivos que no son imágenes (copiados a Otros)", copiados, origen)
+            if resultado.otros_fallidos:
+                texto += "\n\n" + _lista("Archivos que no se pudieron copiar a Otros",
+                                         [(r, _motivo(e)) for r, e in resultado.otros_fallidos], origen)
             self.cola.put(("fin", texto, destino))
         except Exception as e:
             self.cola.put(("error", f"{type(e).__name__}: {e}", None))
