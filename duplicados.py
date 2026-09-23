@@ -74,7 +74,7 @@ class Resultado:
     grupos: list[list[InfoImagen]] = field(default_factory=list)  # [0] = la que se conserva
     errores: list[InfoImagen] = field(default_factory=list)  # imágenes que no se pudieron leer
     ignorados: list[Path] = field(default_factory=list)      # archivos que no son imágenes (videos, documentos...)
-    otros_fallidos: list[tuple[Path, str]] = field(default_factory=list)  # de ignorados, los que no se pudieron copiar
+    no_copiados: list[tuple[Path, str]] = field(default_factory=list)  # (ruta, motivo) de errores/ignorados que fallaron al copiar
 
 
 def buscar_archivos(origen: Path, excluir: Iterable[Path] = ()) -> tuple[list[Path], list[Path]]:
@@ -300,7 +300,8 @@ def copiar_resultado(resultado: Resultado, destino: Path, progreso: Progreso | N
     dir_orig.mkdir(parents=True, exist_ok=True)
     dir_dup.mkdir(parents=True, exist_ok=True)
 
-    total = len(resultado.unicas) + sum(len(g) for g in resultado.grupos) + len(resultado.ignorados)
+    total = (len(resultado.unicas) + sum(len(g) for g in resultado.grupos)
+             + len(resultado.errores) + len(resultado.ignorados))
     hechos = 0
     filas = []
 
@@ -333,22 +334,23 @@ def copiar_resultado(resultado: Resultado, destino: Path, progreso: Progreso | N
             filas.append([n, tipo, info.ruta, final_c, f"{info.ancho}x{info.alto}", info.tamano])
             avanzar()
 
-    if resultado.ignorados:
-        dir_otros = destino / "Otros"
-        dir_otros.mkdir(exist_ok=True)
-    for ruta in resultado.ignorados:
-        # un video o documento bloqueado no debe detener la copia del resto
+    def copiar_aparte(ruta: Path, carpeta: Path, tipo: str, detalle: str):
+        # un archivo bloqueado o sin permisos no debe detener la copia del resto
         try:
-            final = _destino_libre(dir_otros, ruta.name)
+            carpeta.mkdir(exist_ok=True)
+            final = _destino_libre(carpeta, ruta.name)
             shutil.copy2(ruta, final)
-            filas.append(["", "no es imagen", ruta, final, "", final.stat().st_size])
+            filas.append(["", tipo, ruta, final, detalle, final.stat().st_size])
         except OSError as e:
-            resultado.otros_fallidos.append((ruta, f"{type(e).__name__}: {e}"))
-            filas.append(["", "no es imagen (no se pudo copiar)", ruta, "", f"{type(e).__name__}: {e}", ""])
+            motivo = f"{type(e).__name__}: {e}"
+            resultado.no_copiados.append((ruta, motivo))
+            filas.append(["", f"{tipo} (no se pudo copiar)", ruta, "", motivo, ""])
         avanzar()
 
     for info in resultado.errores:
-        filas.append(["", "error de lectura (no copiada)", info.ruta, "", info.error, info.tamano])
+        copiar_aparte(info.ruta, destino / "No_leidas", "no se pudo leer", info.error)
+    for ruta in resultado.ignorados:
+        copiar_aparte(ruta, destino / "Otros", "no es imagen", "")
 
     reporte = destino / "reporte_duplicados.csv"
     with open(reporte, "w", newline="", encoding="utf-8-sig") as f:

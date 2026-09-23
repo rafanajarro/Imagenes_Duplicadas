@@ -124,7 +124,7 @@ class App(tk.Tk):
         if origen.resolve() == destino.resolve():
             messagebox.showerror("Error", "La carpeta de destino no puede ser la misma que la de origen.")
             return
-        existentes = [d for d in ("Original", "Duplicadas", "Otros") if (destino / d).exists() and any((destino / d).iterdir())]
+        existentes = [d for d in ("Original", "Duplicadas", "No_leidas", "Otros") if (destino / d).exists() and any((destino / d).iterdir())]
         if existentes and not messagebox.askyesno(
                 "Carpetas existentes",
                 f"En el destino ya existen con contenido: {', '.join(existentes)}.\n"
@@ -164,24 +164,26 @@ class App(tk.Tk):
                 f"Sin duplicados: {len(resultado.unicas)}\n"
                 f"Grupos de duplicados: {len(resultado.grupos)}\n"
                 f"Copias duplicadas: {n_dup}\n"
-                f"Imágenes que no se pudieron leer (no copiadas): {len(resultado.errores)}\n"
+                f"Imágenes que no se pudieron leer: {len(resultado.errores)}\n"
                 f"Archivos que no son imágenes: {len(otros)}\n\n"
                 f"Original: {len(resultado.unicas) + len(resultado.grupos)} imágenes → {destino / 'Original'}\n"
                 f"Duplicadas: {n_dup} imágenes → {destino / 'Duplicadas'}\n"
             )
-            if otros:
-                texto += f"Otros: {len(otros) - len(resultado.otros_fallidos)} archivos → {destino / 'Otros'}\n"
-            texto += f"Reporte: {reporte}"
+            fallidos = {r for r, _ in resultado.no_copiados}
+            no_leidas = [(i.ruta, _motivo(i.error)) for i in resultado.errores if i.ruta not in fallidos]
+            otros_copiados = [r for r in otros if r not in fallidos]
             if resultado.errores:
-                texto += "\n\n" + _lista("Imágenes que no se pudieron leer",
-                                         [(i.ruta, _motivo(i.error)) for i in resultado.errores], origen)
-            fallidos = {r for r, _ in resultado.otros_fallidos}
-            copiados = [r for r in otros if r not in fallidos]
-            if copiados:
-                texto += "\n\n" + _lista("Archivos que no son imágenes (copiados a Otros)", copiados, origen)
-            if resultado.otros_fallidos:
-                texto += "\n\n" + _lista("Archivos que no se pudieron copiar a Otros",
-                                         [(r, _motivo(e)) for r, e in resultado.otros_fallidos], origen)
+                texto += f"No_leidas: {len(no_leidas)} imágenes → {destino / 'No_leidas'}\n"
+            if otros:
+                texto += f"Otros: {len(otros_copiados)} archivos → {destino / 'Otros'}\n"
+            texto += f"Reporte: {reporte}"
+            if no_leidas:
+                texto += "\n\n" + _lista("Imágenes que no se pudieron leer (copiadas a No_leidas)", no_leidas, origen)
+            if otros_copiados:
+                texto += "\n\n" + _lista("Archivos que no son imágenes (copiados a Otros)", otros_copiados, origen)
+            if resultado.no_copiados:
+                texto += "\n\n" + _lista("Archivos que NO se pudieron copiar",
+                                         [(r, _motivo(e)) for r, e in resultado.no_copiados], origen)
             self.cola.put(("fin", texto, destino))
         except Exception as e:
             self.cola.put(("error", f"{type(e).__name__}: {e}", None))

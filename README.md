@@ -55,13 +55,14 @@ Destino/
 ├── Duplicadas/
 │   ├── grupo_001_foto/    copias extra de la imagen "foto" de Original
 │   └── grupo_002_.../
+├── No_leidas/             imágenes dañadas o que no se pudieron abrir
 ├── Otros/                 videos, documentos y demás archivos que no son imágenes
 └── reporte_duplicados.csv detalle de qué pasó con cada archivo
 ```
 
 De cada grupo de duplicadas se conserva en `Original` la de **mayor resolución** (y, en empate, la de mayor peso).
 
-Los archivos que no son imágenes (videos, documentos, etc.) se copian a `Otros` (se crea solo si hay alguno). Las imágenes dañadas o ilegibles **no se copian**. Al terminar, el resumen de la ventana y el reporte CSV listan los nombres y la cantidad de cada tipo.
+Las imágenes dañadas o que no se pudieron abrir (por ejemplo, un RAW de una cámara que la librería aún no soporta) se copian a `No_leidas`, y los archivos que no son imágenes (videos, documentos, etc.) a `Otros`; cada carpeta se crea solo si hay algún archivo para ella. Así todo el contenido del origen llega al destino; si algún archivo no se puede copiar (por ejemplo, porque está abierto en otro programa), aparece en la lista «Archivos que NO se pudieron copiar». Al terminar, el resumen de la ventana y el reporte CSV listan los nombres y la cantidad de cada tipo.
 
 ## Cómo detecta duplicadas
 
