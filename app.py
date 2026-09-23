@@ -29,12 +29,35 @@ def abrir_carpeta(ruta: Path):
         subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(ruta)])
 
 
+def _motivo(error: str) -> str:
+    if error.startswith("UnidentifiedImageError"):
+        return "archivo dañado o no es una imagen válida"
+    if error.startswith("LibRaw"):
+        return "RAW dañado o de un modelo no soportado"
+    if error.startswith(("PermissionError", "OSError")):
+        return "no se pudo abrir (permisos o archivo en uso)"
+    return error[:80]
+
+
+def _lista(titulo: str, elementos: list, origen: Path) -> str:
+    """Lista de archivos con su ruta relativa a la carpeta de origen. Acepta rutas o tuplas (ruta, motivo)."""
+    lineas = [f"{titulo} ({len(elementos)}):"]
+    for e in elementos:
+        ruta, motivo = e if isinstance(e, tuple) else (e, "")
+        try:
+            nombre = ruta.relative_to(origen.resolve())
+        except ValueError:
+            nombre = ruta
+        lineas.append(f"  • {nombre}" + (f" — {motivo}" if motivo else ""))
+    return "\n".join(lineas)
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Buscador de imágenes duplicadas")
-        self.geometry("680x420")
-        self.minsize(560, 380)
+        self.geometry("720x520")
+        self.minsize(560, 420)
 
         self.origen = tk.StringVar()
         self.destino = tk.StringVar()
@@ -70,8 +93,11 @@ class App(tk.Tk):
         self.barra.grid(row=4, column=0, columnspan=3, sticky="ew")
         ttk.Label(marco, textvariable=self.estado).grid(row=5, column=0, columnspan=3, sticky="w", pady=4)
 
-        self.resumen = tk.Text(marco, height=8, state="disabled", wrap="word")
+        self.resumen = tk.Text(marco, height=12, state="disabled", wrap="word")
         self.resumen.grid(row=6, column=0, columnspan=3, sticky="nsew", pady=(8, 0))
+        desplazar = ttk.Scrollbar(marco, orient="vertical", command=self.resumen.yview)
+        desplazar.grid(row=6, column=3, sticky="ns", pady=(8, 0))
+        self.resumen.configure(yscrollcommand=desplazar.set)
         marco.rowconfigure(6, weight=1)
 
     def _elegir(self, var: tk.StringVar):
@@ -117,9 +143,12 @@ class App(tk.Tk):
     def _trabajo(self, origen: Path, destino: Path, umbrales: tuple[int, int]):
         try:
             self.cola.put(("progreso", "Buscando imágenes", 0, 0))
-            rutas = duplicados.buscar_imagenes(origen, excluir=[destino])
+            rutas, otros = duplicados.buscar_archivos(origen, excluir=[destino])
             if not rutas:
-                self.cola.put(("fin", "No se encontraron imágenes en la carpeta de origen.", None))
+                texto = "No se encontraron imágenes en la carpeta de origen."
+                if otros:
+                    texto += "\n\n" + _lista("Archivos que no son imágenes", otros, origen)
+                self.cola.put(("fin", texto, None))
                 return
 
             infos = []
@@ -129,6 +158,7 @@ class App(tk.Tk):
                     self._progreso("Analizando", n, len(rutas))
 
             resultado = duplicados.agrupar(infos, *umbrales, progreso=self._progreso)
+            resultado.ignorados = otros
             reporte = duplicados.copiar_resultado(resultado, destino, self._progreso)
 
             n_dup = sum(len(g) - 1 for g in resultado.grupos)
@@ -137,11 +167,17 @@ class App(tk.Tk):
                 f"Sin duplicados: {len(resultado.unicas)}\n"
                 f"Grupos de duplicados: {len(resultado.grupos)}\n"
                 f"Copias duplicadas: {n_dup}\n"
-                f"No se pudieron leer: {len(resultado.errores)}\n\n"
+                f"Imágenes que no se pudieron leer: {len(resultado.errores)}\n"
+                f"Archivos que no son imágenes (no copiados): {len(otros)}\n\n"
                 f"Original: {len(resultado.unicas) + len(resultado.grupos)} imágenes → {destino / 'Original'}\n"
                 f"Duplicadas: {n_dup} imágenes → {destino / 'Duplicadas'}\n"
                 f"Reporte: {reporte}"
             )
+            if resultado.errores:
+                texto += "\n\n" + _lista("Imágenes que no se pudieron leer",
+                                         [(i.ruta, _motivo(i.error)) for i in resultado.errores], origen)
+            if otros:
+                texto += "\n\n" + _lista("Archivos que no son imágenes", otros, origen)
             self.cola.put(("fin", texto, destino))
         except Exception as e:
             self.cola.put(("error", f"{type(e).__name__}: {e}", None))

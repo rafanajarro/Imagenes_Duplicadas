@@ -60,6 +60,8 @@ Destino/
 
 De cada grupo de duplicadas se conserva en `Original` la de **mayor resolución** (y, en empate, la de mayor peso).
 
+Los archivos que no son imágenes (videos, documentos, etc.) y las imágenes dañadas o ilegibles **no se copian**; al terminar, el resumen de la ventana y el reporte CSV listan sus nombres y la cantidad de cada tipo.
+
 ## Cómo detecta duplicadas
 
 - **Exactas**: mismo contenido de archivo (hash SHA-256), aunque el nombre sea distinto.

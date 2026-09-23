@@ -72,20 +72,22 @@ class InfoImagen:
 class Resultado:
     unicas: list[InfoImagen] = field(default_factory=list)
     grupos: list[list[InfoImagen]] = field(default_factory=list)  # [0] = la que se conserva
-    errores: list[InfoImagen] = field(default_factory=list)
+    errores: list[InfoImagen] = field(default_factory=list)  # imágenes que no se pudieron leer
+    ignorados: list[Path] = field(default_factory=list)      # archivos que no son imágenes (videos, documentos...)
 
 
-def buscar_imagenes(origen: Path, excluir: Iterable[Path] = ()) -> list[Path]:
+def buscar_archivos(origen: Path, excluir: Iterable[Path] = ()) -> tuple[list[Path], list[Path]]:
+    """Devuelve (imágenes, otros archivos) encontrados en origen y sus subcarpetas."""
     excluir = [p.resolve() for p in excluir]
-    encontradas = []
+    imagenes, otros = [], []
     for raiz, dirs, archivos in os.walk(origen):
         raiz_p = Path(raiz).resolve()
         dirs[:] = [d for d in dirs if (raiz_p / d).resolve() not in excluir]
         for nombre in archivos:
-            if Path(nombre).suffix.lower() in EXTENSIONES:
-                encontradas.append(raiz_p / nombre)
-    encontradas.sort()
-    return encontradas
+            (imagenes if Path(nombre).suffix.lower() in EXTENSIONES else otros).append(raiz_p / nombre)
+    imagenes.sort()
+    otros.sort()
+    return imagenes, otros
 
 
 def _sha256(ruta: Path) -> str:
@@ -158,8 +160,9 @@ def _abrir_raw(ruta: Path) -> tuple[Image.Image, int, int]:
 
 
 def analizar_imagen(ruta: Path) -> InfoImagen:
-    info = InfoImagen(ruta=ruta, tamano=ruta.stat().st_size)
+    info = InfoImagen(ruta=ruta, tamano=0)
     try:
+        info.tamano = ruta.stat().st_size
         info.sha256 = _sha256(ruta)
         if ruta.suffix.lower() in EXTENSIONES_RAW:
             img, info.ancho, info.alto = _abrir_raw(ruta)
@@ -330,7 +333,13 @@ def copiar_resultado(resultado: Resultado, destino: Path, progreso: Progreso | N
             avanzar()
 
     for info in resultado.errores:
-        filas.append(["", "error (no copiada)", info.ruta, "", info.error, info.tamano])
+        filas.append(["", "error de lectura (no copiada)", info.ruta, "", info.error, info.tamano])
+    for ruta in resultado.ignorados:
+        try:
+            tamano = ruta.stat().st_size
+        except OSError:
+            tamano = ""
+        filas.append(["", "no es imagen (no copiado)", ruta, "", "", tamano])
 
     reporte = destino / "reporte_duplicados.csv"
     with open(reporte, "w", newline="", encoding="utf-8-sig") as f:
